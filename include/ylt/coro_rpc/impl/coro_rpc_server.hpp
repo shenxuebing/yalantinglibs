@@ -42,6 +42,7 @@
 #include "coro_connection.hpp"
 #include "ylt/coro_io/coro_io.hpp"
 #include "ylt/coro_io/io_context_pool.hpp"
+#include "ylt/coro_io/ip_whitelist.hpp"
 #include "ylt/coro_rpc/impl/expected.hpp"
 namespace coro_rpc {
 /*!
@@ -348,6 +349,28 @@ class coro_rpc_server_base {
 
   auto &get_io_context_pool() noexcept { return pool_; }
 
+  /*!
+   * Get IP whitelist reference
+   * @return reference to the IP whitelist
+   */
+  coro_io::ip_whitelist& get_ip_whitelist() noexcept { return ip_whitelist_; }
+
+  /*!
+   * Enable IP whitelist filtering
+   * @param enable true to enable, false to disable
+   */
+  void enable_ip_whitelist(bool enable = true) noexcept {
+    ip_whitelist_enabled_ = enable;
+  }
+
+  /*!
+   * Check if IP whitelist is enabled
+   * @return true if enabled, false otherwise
+   */
+  bool is_ip_whitelist_enabled() const noexcept {
+    return ip_whitelist_enabled_;
+  }
+
  private:
   coro_rpc::err_code listen() {
     ELOG_INFO << "begin to listen";
@@ -432,6 +455,34 @@ class coro_rpc_server_base {
           co_return coro_rpc::errc::operation_canceled;
         }
         continue;
+      }
+
+      // IP白名单检查
+      if (ip_whitelist_enabled_) {
+        try {
+          auto remote_endpoint = socket.remote_endpoint();
+          auto client_ip = remote_endpoint.address();
+          
+          if (!ip_whitelist_.is_allowed(client_ip)) {
+            ELOG_WARN << "Connection from " << client_ip.to_string()
+                     << " rejected by IP whitelist";
+            // 关闭连接
+            asio::error_code ignored_ec;
+            socket.shutdown(asio::ip::tcp::socket::shutdown_both, ignored_ec);
+            socket.close(ignored_ec);
+            continue;
+          }
+          
+          ELOG_INFO << "Connection from " << client_ip.to_string()
+                   << " allowed by IP whitelist";
+        } catch (const std::exception& e) {
+          ELOG_ERROR << "Error checking IP whitelist: " << e.what();
+          // 出错时关闭连接
+          asio::error_code ignored_ec;
+          socket.shutdown(asio::ip::tcp::socket::shutdown_both, ignored_ec);
+          socket.close(ignored_ec);
+          continue;
+        }
       }
 
       int64_t conn_id = ++conn_id_;
@@ -543,7 +594,11 @@ class coro_rpc_server_base {
   bool use_ssl_ = false;
 #endif
 #ifdef YLT_ENABLE_IBV
-  std::optional<coro_io::ib_socket_t::config_t> ibv_config_;
+   std::optional<coro_io::ib_socket_t::config_t> ibv_config_;
 #endif
+
+   // IP白名单相关成员变量
+   coro_io::ip_whitelist ip_whitelist_;
+   bool ip_whitelist_enabled_ = false;
 };
 }  // namespace coro_rpc

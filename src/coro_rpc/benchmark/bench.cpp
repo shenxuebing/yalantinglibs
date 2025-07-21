@@ -28,6 +28,7 @@ struct bench_config {
   uint32_t min_recv_buf_count;
   uint32_t max_recv_buf_count;
   bool use_client_pool;
+  bool enable_ip_whitelist_test;
 };
 
 bench_config init_conf(const cmdline::parser& parser) {
@@ -45,6 +46,7 @@ bench_config init_conf(const cmdline::parser& parser) {
   conf.min_recv_buf_count = parser.get<uint32_t>("min_recv_buf_count");
   conf.max_recv_buf_count = parser.get<uint32_t>("max_recv_buf_count");
   conf.use_client_pool = parser.get<bool>("use_client_pool");
+  conf.enable_ip_whitelist_test = parser.get<bool>("enable_ip_whitelist_test");
 
   if (conf.client_concurrency == 0) {
     ELOG_WARN << "port: " << conf.port << ", "
@@ -65,7 +67,8 @@ bench_config init_conf(const cmdline::parser& parser) {
               << "log level: " << conf.log_level << ", ";
   }
   ELOG_WARN << "min_recv_buf_count: " << conf.min_recv_buf_count
-            << ", max_recv_buf_count: " << conf.max_recv_buf_count;
+            << ", max_recv_buf_count: " << conf.max_recv_buf_count
+            << ", enable_ip_whitelist_test: " << conf.enable_ip_whitelist_test;
   return conf;
 }
 
@@ -293,6 +296,7 @@ int main(int argc, char** argv) {
   parser.add<uint32_t>("max_recv_buf_count", 'f', "min recieve buffer count",
                        false, 32);
   parser.add<bool>("use_client_pool", 'g', "use client pool", false, true);
+  parser.add<bool>("enable_ip_whitelist_test", 'w', "enable ip whitelist test", false, false);
 
   parser.parse_check(argc, argv);
   auto conf = init_conf(parser);
@@ -320,6 +324,30 @@ int main(int argc, char** argv) {
                                      conf.port, "0.0.0.0",
                                      std::chrono::seconds(10));
     server.register_handler<echo>();
+    
+    // IP白名单测试功能
+    if (conf.enable_ip_whitelist_test) {
+      std::cout << "IP Whitelist Test Enabled\n";
+      auto& whitelist = server.get_ip_whitelist();
+      
+      // 添加本地IP到白名单
+      whitelist.add_ip("127.0.0.1");
+      whitelist.add_ip("::1");  // IPv6本地地址
+      
+      // 添加常见的局域网段
+      whitelist.add_cidr("192.168.0.0/16");
+      whitelist.add_cidr("10.0.0.0/8");
+      whitelist.add_cidr("172.16.0.0/12");
+      
+      // 启用IP白名单
+      server.enable_ip_whitelist(true);
+      
+      std::cout << "IP Whitelist configured with:\n";
+      std::cout << "- localhost (127.0.0.1, ::1)\n";
+      std::cout << "- Private networks (192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12)\n";
+      std::cout << "Only connections from these IPs will be accepted.\n";
+    }
+    
 #ifdef YLT_ENABLE_IBV
     if (conf.enable_ib) {
       coro_io::ib_socket_t::config_t ib_conf{};
