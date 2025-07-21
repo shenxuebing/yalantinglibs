@@ -356,6 +356,22 @@ class coro_rpc_server_base {
   coro_io::ip_whitelist& get_ip_whitelist() noexcept { return ip_whitelist_; }
 
   /*!
+   * Set IP whitelist (copy)
+   * @param whitelist the IP whitelist to copy
+   */
+  void set_ip_whitelist(const coro_io::ip_whitelist& whitelist) {
+    ip_whitelist_ = whitelist;
+  }
+
+  /*!
+   * Set IP whitelist (move)
+   * @param whitelist the IP whitelist to move
+   */
+  void set_ip_whitelist(coro_io::ip_whitelist&& whitelist) noexcept {
+    ip_whitelist_ = std::move(whitelist);
+  }
+
+  /*!
    * Enable IP whitelist filtering
    * @param enable true to enable, false to disable
    */

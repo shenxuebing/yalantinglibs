@@ -226,3 +226,41 @@ TEST_CASE("test http server integration with whitelist") {
         server_thread.join();
     }
 }
+TEST_CASE("test http server set_ip_whitelist method") {
+    // 测试set_ip_whitelist方法
+    coro_http_server server(1, 0);  // 使用随机端口
+    
+    // 设置测试处理器
+    server.set_http_handler<GET>("/test", [](coro_http_request& req, coro_http_response& resp) {
+        resp.set_status_and_content(status_type::ok, "Success");
+    });
+    
+    // 创建一个新的IP白名单
+    coro_io::ip_whitelist new_whitelist;
+    new_whitelist.add_ip("127.0.0.1");
+    new_whitelist.add_ip("192.168.1.100");
+    new_whitelist.add_cidr("10.0.0.0/8");
+    
+    // 使用copy版本设置IP白名单
+    server.set_ip_whitelist(new_whitelist);
+    server.enable_ip_whitelist(true);
+    
+    // 验证白名单设置是否生效
+    auto& whitelist = server.get_ip_whitelist();
+    CHECK(whitelist.is_allowed("127.0.0.1"));
+    CHECK(whitelist.is_allowed("192.168.1.100"));
+    CHECK(whitelist.is_allowed("10.1.2.3"));  // CIDR范围内
+    CHECK_FALSE(whitelist.is_allowed("8.8.8.8"));   // 不在白名单中
+    
+    // 测试move版本
+    coro_io::ip_whitelist another_whitelist;
+    another_whitelist.add_ip("172.16.0.1");
+    another_whitelist.add_regex_pattern(R"(192\.168\.1\.\d+)");
+    
+    server.set_ip_whitelist(std::move(another_whitelist));
+    
+    // 验证新的白名单设置
+    CHECK(whitelist.is_allowed("172.16.0.1"));
+    CHECK(whitelist.is_allowed("192.168.1.50"));  // regex匹配
+    CHECK_FALSE(whitelist.is_allowed("127.0.0.1"));    // 之前的规则应该被替换
+}

@@ -175,8 +175,57 @@ int main() {
     std::cout << "Removing IP 192.168.1.0/24 from whitelist...\n";
     // 注意：当前实现不支持移除CIDR，只能移除单个IP
     
+    // 演示set_ip_whitelist方法
+    std::cout << "\n=== Demonstrating set_ip_whitelist Method ===\n";
+    
+    // 创建一个新的白名单配置
+    std::cout << "Creating a new whitelist configuration...\n";
+    coro_io::ip_whitelist new_whitelist;
+    new_whitelist.add_ip("127.0.0.1");
+    new_whitelist.add_ip("::1");
+    new_whitelist.add_cidr("192.168.0.0/16");  // 更大的私有网络范围
+    new_whitelist.add_regex_pattern(R"(10\.0\.1\.\d+)");  // 特定子网的正则匹配
+    
+    std::cout << "New whitelist contains:\n";
+    std::cout << "  - 127.0.0.1 (localhost)\n";
+    std::cout << "  - ::1 (IPv6 localhost)\n";
+    std::cout << "  - 192.168.0.0/16 (Private Class B network)\n";
+    std::cout << "  - Regex pattern: 10.0.1.x\n";
+    
+    // 使用copy版本设置白名单
+    std::cout << "\nSetting whitelist using copy method...\n";
+    server.set_ip_whitelist(new_whitelist);
+    std::cout << "Whitelist updated! New size: " << server.get_ip_whitelist().size() << "\n";
+    
+    // 验证新的白名单配置
+    std::vector<std::string> new_test_ips = {
+        "127.0.0.1",        // 应该被允许
+        "192.168.10.50",    // 应该被允许（新CIDR范围内）
+        "10.0.1.100",       // 应该被允许（正则匹配）
+        "192.168.1.50",     // 应该被允许（CIDR范围内，之前是单独的/24）
+        "10.0.2.100",       // 应该被拒绝（正则不匹配）
+        "172.16.0.50"       // 应该被拒绝（不在新白名单中）
+    };
+    
+    std::cout << "\nTesting new whitelist configuration:\n";
+    for (const auto& ip : new_test_ips) {
+        bool allowed = server.get_ip_whitelist().is_allowed(ip);
+        std::cout << "  IP " << ip << ": " << (allowed ? "ALLOWED" : "BLOCKED") << "\n";
+    }
+    
+    // 演示move版本
+    std::cout << "\nDemonstrating move version of set_ip_whitelist...\n";
+    coro_io::ip_whitelist move_whitelist;
+    move_whitelist.add_ip("127.0.0.1");
+    move_whitelist.add_ip("::1");
+    move_whitelist.add_ip("203.0.113.0");  // TEST-NET-3 (RFC 5737)
+    
+    server.set_ip_whitelist(std::move(move_whitelist));
+    std::cout << "Whitelist replaced using move semantics.\n";
+    std::cout << "New whitelist size: " << server.get_ip_whitelist().size() << "\n";
+    
     // 临时禁用白名单
-    std::cout << "Temporarily disabling IP whitelist...\n";
+    std::cout << "\nTemporarily disabling IP whitelist...\n";
     server.enable_ip_whitelist(false);
     std::cout << "IP whitelist disabled. All connections will be accepted.\n";
     
@@ -185,15 +234,13 @@ int main() {
     std::cout << "Re-enabling IP whitelist...\n";
     server.enable_ip_whitelist(true);
     
-    // 清空白名单
-    std::cout << "Clearing whitelist...\n";
-    whitelist.clear();
-    std::cout << "Whitelist cleared. Size: " << whitelist.size() << "\n";
-    
-    // 重新添加基本的本地访问
-    whitelist.add_ip("127.0.0.1");
-    whitelist.add_ip("::1");
-    std::cout << "Re-added localhost access.\n";
+    // 最终配置：重新设置为基本的本地访问白名单
+    std::cout << "\nFinal configuration: Setting basic localhost whitelist...\n";
+    coro_io::ip_whitelist final_whitelist;
+    final_whitelist.add_ip("127.0.0.1");
+    final_whitelist.add_ip("::1");
+    server.set_ip_whitelist(std::move(final_whitelist));
+    std::cout << "Final whitelist set with localhost access only.\n";
     
     std::cout << "\n=== Server Running ===\n";
     std::cout << "Server is running with IP whitelist protection.\n";

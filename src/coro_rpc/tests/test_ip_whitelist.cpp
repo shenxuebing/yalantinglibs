@@ -206,27 +206,6 @@ TEST_CASE("RPC server IP whitelist integration") {
     // 在实际环境中，可以通过网络配置来测试被拒绝的连接
 }
 
-// 测试全局IP白名单
-TEST_CASE("Global IP whitelist functionality") {
-    auto& global_whitelist = global_ip_whitelist();
-    
-    // 清空全局白名单
-    global_whitelist.clear();
-    CHECK(global_whitelist.empty());
-    
-    // 添加一些IP到全局白名单
-    global_whitelist.add_ip("127.0.0.1");
-    global_whitelist.add_cidr("192.168.0.0/16");
-    
-    CHECK_FALSE(global_whitelist.empty());
-    CHECK(global_whitelist.is_allowed("127.0.0.1"));
-    CHECK(global_whitelist.is_allowed("192.168.1.100"));
-    CHECK_FALSE(global_whitelist.is_allowed("10.0.0.1"));
-    
-    // 清理
-    global_whitelist.clear();
-}
-
 // 测试移除IP功能
 TEST_CASE("IP whitelist remove IP functionality") {
     ip_whitelist whitelist;
@@ -251,4 +230,39 @@ TEST_CASE("IP whitelist remove IP functionality") {
     // 尝试移除格式错误的IP
     CHECK_FALSE(whitelist.remove_ip("invalid_ip"));
     CHECK_EQ(whitelist.size(), 2);
+}
+// 测试RPC服务器set_ip_whitelist方法
+TEST_CASE("RPC server set_ip_whitelist method") {
+    // 测试set_ip_whitelist方法
+    coro_rpc_server server(1, 9002);
+    server.register_handler<echo>();
+    
+    // 创建一个新的IP白名单
+    coro_io::ip_whitelist new_whitelist;
+    new_whitelist.add_ip("127.0.0.1");
+    new_whitelist.add_ip("192.168.1.100");
+    new_whitelist.add_cidr("10.0.0.0/8");
+    
+    // 使用copy版本设置IP白名单
+    server.set_ip_whitelist(new_whitelist);
+    server.enable_ip_whitelist(true);
+    
+    // 验证白名单设置是否生效
+    auto& whitelist = server.get_ip_whitelist();
+    CHECK(whitelist.is_allowed("127.0.0.1"));
+    CHECK(whitelist.is_allowed("192.168.1.100"));
+    CHECK(whitelist.is_allowed("10.1.2.3"));  // CIDR范围内
+    CHECK_FALSE(whitelist.is_allowed("8.8.8.8"));   // 不在白名单中
+    
+    // 测试move版本
+    coro_io::ip_whitelist another_whitelist;
+    another_whitelist.add_ip("172.16.0.1");
+    another_whitelist.add_regex_pattern(R"(192\.168\.1\.\d+)");
+    
+    server.set_ip_whitelist(std::move(another_whitelist));
+    
+    // 验证新的白名单设置
+    CHECK(whitelist.is_allowed("172.16.0.1"));
+    CHECK(whitelist.is_allowed("192.168.1.50"));  // regex匹配
+    CHECK_FALSE(whitelist.is_allowed("127.0.0.1"));    // 之前的规则应该被替换
 }

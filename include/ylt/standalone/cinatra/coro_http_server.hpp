@@ -608,6 +608,22 @@ class coro_http_server {
 
   // IP白名单管理接口
   coro_io::ip_whitelist& get_ip_whitelist() { return ip_whitelist_; }
+
+  /*!
+   * Set IP whitelist (copy)
+   * @param whitelist the IP whitelist to copy
+   */
+  void set_ip_whitelist(const coro_io::ip_whitelist& whitelist) {
+    ip_whitelist_ = whitelist;
+  }
+
+  /*!
+   * Set IP whitelist (move)
+   * @param whitelist the IP whitelist to move
+   */
+  void set_ip_whitelist(coro_io::ip_whitelist&& whitelist) noexcept {
+    ip_whitelist_ = std::move(whitelist);
+  }
   
   void enable_ip_whitelist(bool enable) {
     ip_whitelist_enabled_ = enable;

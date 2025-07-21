@@ -24,6 +24,7 @@
 #include <vector>
 #include <regex>
 #include <cstring>
+#include <sstream>
 #include "ylt/easylog.hpp"
 
 namespace coro_io {
@@ -43,6 +44,70 @@ public:
      * @brief 默认构造函数，创建空白名单
      */
     ip_whitelist() = default;
+    
+    /**
+     * @brief 拷贝构造函数
+     * @param other 要拷贝的源对象
+     */
+    ip_whitelist(const ip_whitelist& other) {
+        std::shared_lock<std::shared_mutex> lock(other.mutex_);
+        single_ips_ = other.single_ips_;
+        cidr_v4_networks_ = other.cidr_v4_networks_;
+        cidr_v6_networks_ = other.cidr_v6_networks_;
+        ip_ranges_ = other.ip_ranges_;
+        regex_patterns_ = other.regex_patterns_;
+    }
+    
+    /**
+     * @brief 拷贝赋值运算符
+     * @param other 要拷贝的源对象
+     * @return 当前对象的引用
+     */
+    ip_whitelist& operator=(const ip_whitelist& other) {
+        if (this != &other) {
+            std::shared_lock<std::shared_mutex> other_lock(other.mutex_);
+            std::unique_lock<std::shared_mutex> this_lock(mutex_);
+            
+            single_ips_ = other.single_ips_;
+            cidr_v4_networks_ = other.cidr_v4_networks_;
+            cidr_v6_networks_ = other.cidr_v6_networks_;
+            ip_ranges_ = other.ip_ranges_;
+            regex_patterns_ = other.regex_patterns_;
+        }
+        return *this;
+    }
+    
+    /**
+     * @brief 移动构造函数
+     * @param other 要移动的源对象
+     */
+    ip_whitelist(ip_whitelist&& other) noexcept {
+        std::unique_lock<std::shared_mutex> lock(other.mutex_);
+        single_ips_ = std::move(other.single_ips_);
+        cidr_v4_networks_ = std::move(other.cidr_v4_networks_);
+        cidr_v6_networks_ = std::move(other.cidr_v6_networks_);
+        ip_ranges_ = std::move(other.ip_ranges_);
+        regex_patterns_ = std::move(other.regex_patterns_);
+    }
+    
+    /**
+     * @brief 移动赋值运算符
+     * @param other 要移动的源对象
+     * @return 当前对象的引用
+     */
+    ip_whitelist& operator=(ip_whitelist&& other) noexcept {
+        if (this != &other) {
+            std::unique_lock<std::shared_mutex> other_lock(other.mutex_);
+            std::unique_lock<std::shared_mutex> this_lock(mutex_);
+            
+            single_ips_ = std::move(other.single_ips_);
+            cidr_v4_networks_ = std::move(other.cidr_v4_networks_);
+            cidr_v6_networks_ = std::move(other.cidr_v6_networks_);
+            ip_ranges_ = std::move(other.ip_ranges_);
+            regex_patterns_ = std::move(other.regex_patterns_);
+        }
+        return *this;
+    }
     
     /**
      * @brief 构造函数，使用IP地址列表初始化
@@ -304,6 +369,127 @@ public:
         return count;
     }
 
+    /**
+     * @brief 获取白名单的详细信息
+     * @return 包含所有白名单条目的字符串
+     */
+    std::string to_string() const {
+        std::shared_lock<std::shared_mutex> lock(mutex_);
+        std::ostringstream oss;
+        
+        // 单个IP地址
+        if (!single_ips_.empty()) {
+            oss << "Single IPs (" << single_ips_.size() << "):\n";
+            for (const auto& ip : single_ips_) {
+                oss << "  - " << ip.to_string() << "\n";
+            }
+        }
+        
+        // IPv4 CIDR网段
+        if (!cidr_v4_networks_.empty()) {
+            oss << "IPv4 CIDR Networks (" << cidr_v4_networks_.size() << "):\n";
+            for (const auto& network : cidr_v4_networks_) {
+                oss << "  - " << network.network().to_string()
+                    << "/" << network.prefix_length() << "\n";
+            }
+        }
+        
+        // IPv6 CIDR网段
+        if (!cidr_v6_networks_.empty()) {
+            oss << "IPv6 CIDR Networks (" << cidr_v6_networks_.size() << "):\n";
+            for (const auto& network : cidr_v6_networks_) {
+                oss << "  - " << network.network().to_string()
+                    << "/" << network.prefix_length() << "\n";
+            }
+        }
+        
+        // IP范围
+        if (!ip_ranges_.empty()) {
+            oss << "IP Ranges (" << ip_ranges_.size() << "):\n";
+            for (const auto& range : ip_ranges_) {
+                oss << "  - " << range.first.to_string()
+                    << " - " << range.second.to_string() << "\n";
+            }
+        }
+        
+        // 正则表达式模式
+        if (!regex_patterns_.empty()) {
+            oss << "Regex Patterns (" << regex_patterns_.size() << "):\n";
+            for (size_t i = 0; i < regex_patterns_.size(); ++i) {
+                oss << "  - Pattern " << (i + 1) << ": (regex pattern)\n";
+            }
+        }
+        
+        if (empty()) {
+            oss << "Whitelist is empty.\n";
+        }
+        
+        return oss.str();
+    }
+    
+    /**
+     * @brief 获取单个IP地址列表
+     * @return 包含所有单个IP地址的字符串向量
+     */
+    std::vector<std::string> get_single_ips() const {
+        std::shared_lock<std::shared_mutex> lock(mutex_);
+        std::vector<std::string> result;
+        result.reserve(single_ips_.size());
+        
+        for (const auto& ip : single_ips_) {
+            result.push_back(ip.to_string());
+        }
+        
+        return result;
+    }
+    
+    /**
+     * @brief 获取CIDR网段列表
+     * @return 包含所有CIDR网段的字符串向量
+     */
+    std::vector<std::string> get_cidr_networks() const {
+        std::shared_lock<std::shared_mutex> lock(mutex_);
+        std::vector<std::string> result;
+        result.reserve(cidr_v4_networks_.size() + cidr_v6_networks_.size());
+        
+        for (const auto& network : cidr_v4_networks_) {
+            result.push_back(network.network().to_string() + "/" +
+                           std::to_string(network.prefix_length()));
+        }
+        
+        for (const auto& network : cidr_v6_networks_) {
+            result.push_back(network.network().to_string() + "/" +
+                           std::to_string(network.prefix_length()));
+        }
+        
+        return result;
+    }
+    
+    /**
+     * @brief 获取IP范围列表
+     * @return 包含所有IP范围的字符串向量，格式为"start_ip - end_ip"
+     */
+    std::vector<std::string> get_ip_ranges() const {
+        std::shared_lock<std::shared_mutex> lock(mutex_);
+        std::vector<std::string> result;
+        result.reserve(ip_ranges_.size());
+        
+        for (const auto& range : ip_ranges_) {
+            result.push_back(range.first.to_string() + " - " + range.second.to_string());
+        }
+        
+        return result;
+    }
+    
+    /**
+     * @brief 获取正则表达式模式数量
+     * @return 正则表达式模式的数量
+     */
+    size_t get_regex_pattern_count() const {
+        std::shared_lock<std::shared_mutex> lock(mutex_);
+        return regex_patterns_.size();
+    }
+
 private:
     /**
      * @brief 检查IP是否在指定范围内
@@ -338,13 +524,5 @@ private:
     std::vector<std::regex> regex_patterns_;
 };
 
-/**
- * @brief 获取全局IP白名单实例
- * @return 全局IP白名单引用
- */
-inline ip_whitelist& global_ip_whitelist() {
-    static ip_whitelist instance;
-    return instance;
-}
 
 } // namespace coro_io
