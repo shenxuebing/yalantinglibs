@@ -13,6 +13,7 @@
 #include "ylt/coro_io/coro_io.hpp"
 #include "ylt/coro_io/io_context_pool.hpp"
 #include "ylt/coro_io/load_balancer.hpp"
+#include "ylt/coro_io/ip_whitelist.hpp"
 
 namespace cinatra {
 enum class file_resp_format_type {
@@ -605,6 +606,20 @@ class coro_http_server {
   std::string_view address() { return address_; }
   std::error_code get_errc() { return errc_; }
 
+  // IP白名单管理接口
+  coro_io::ip_whitelist& get_ip_whitelist() { return ip_whitelist_; }
+  
+  void enable_ip_whitelist(bool enable) {
+    ip_whitelist_enabled_ = enable;
+    if (enable) {
+      CINATRA_LOG_INFO << "HTTP Server IP whitelist enabled";
+    } else {
+      CINATRA_LOG_INFO << "HTTP Server IP whitelist disabled";
+    }
+  }
+  
+  bool is_ip_whitelist_enabled() const { return ip_whitelist_enabled_; }
+
  private:
   std::error_code listen() {
     CINATRA_LOG_INFO << "begin to listen " << port_;
@@ -749,6 +764,28 @@ class coro_http_server {
         }
         continue;
       }
+
+      // IP白名单检查
+      if (ip_whitelist_enabled_) {
+        auto remote_endpoint = socket.remote_endpoint(error);
+        if (error) {
+          CINATRA_LOG_WARNING << "Failed to get remote endpoint: " << error.message();
+          socket.close(error);
+          continue;
+        }
+        
+        std::string client_ip = remote_endpoint.address().to_string();
+        if (!ip_whitelist_.is_allowed(client_ip)) {
+          CINATRA_LOG_WARNING << "HTTP connection rejected from IP: " << client_ip
+                           << " (not in whitelist)";
+          socket.close(error);
+          continue;
+        }
+        
+        CINATRA_LOG_DEBUG << "HTTP connection accepted from IP: " << client_ip
+                          << " (whitelist check passed)";
+      }
+
       auto conn =
           accept_impl(coro_io::socket_wrapper_t{std::move(socket), executor});
       start_one(conn).via(conn->get_executor()).detach();
@@ -1044,6 +1081,10 @@ class coro_http_server {
   bool write_failed_forever_ = false;
   bool read_failed_forever_ = false;
 #endif
+
+  // IP白名单相关成员
+  coro_io::ip_whitelist ip_whitelist_;
+  std::atomic<bool> ip_whitelist_enabled_{false};
 };
 
 using http_server = coro_http_server;

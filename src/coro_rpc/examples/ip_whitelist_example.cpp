@@ -139,7 +139,7 @@ int main() {
         coro_rpc_client client;
         auto connect_result = syncAwait(client.connect("127.0.0.1", "9001"));
         
-        if (connect_result.has_value()) {
+        if (!connect_result) {
             std::cout << "  ✓ Connection successful!\n";
             
             // 测试RPC调用
@@ -158,7 +158,7 @@ int main() {
                 std::cout << "  ✓ Server info: " << info_result.value() << "\n";
             }
         } else {
-            std::cout << "  ✗ Connection failed (unexpected)\n";
+            std::cout << "  ✗ Connection failed: " << connect_result.message() << "\n";
         }
     } catch (const std::exception& e) {
         std::cout << "  ✗ Connection exception: " << e.what() << "\n";

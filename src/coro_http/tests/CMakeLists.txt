@@ -26,6 +26,7 @@ add_executable(coro_http_test
         test_cinatra.cpp
         test_cinatra_websocket.cpp
         test_http_parse.cpp
+        test_http_ip_whitelist.cpp
         main.cpp
         )
 

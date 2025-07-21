@@ -30,11 +30,13 @@ endif()
 add_executable(coro_http_example example.cpp)
 add_executable(coro_http_load_balancer load_balancer.cpp)
 add_executable(coro_chat_room chat_room.cpp)
+add_executable(coro_http_ip_whitelist_example http_ip_whitelist_example.cpp)
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_SYSTEM_NAME MATCHES "Windows") # mingw-w64
     target_link_libraries(coro_http_example wsock32 ws2_32)
     target_link_libraries(coro_http_load_balancer wsock32 ws2_32)
     target_link_libraries(coro_chat_room wsock32 ws2_32)
+    target_link_libraries(coro_http_ip_whitelist_example wsock32 ws2_32)
 endif()
 
 option(ENABLE_pybind11 "Enable pybind11 " OFF)
