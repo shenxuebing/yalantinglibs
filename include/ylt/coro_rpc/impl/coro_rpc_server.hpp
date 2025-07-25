@@ -473,7 +473,7 @@ class coro_rpc_server_base {
         continue;
       }
 
-      // IP白名单检查
+      // IP whitelist check
       if (ip_whitelist_enabled_) {
         try {
           auto remote_endpoint = socket.remote_endpoint();
@@ -482,7 +482,6 @@ class coro_rpc_server_base {
           if (!ip_whitelist_.is_allowed(client_ip)) {
             ELOG_WARN << "Connection from " << client_ip.to_string()
                      << " rejected by IP whitelist";
-            // 关闭连接
             asio::error_code ignored_ec;
             socket.shutdown(asio::ip::tcp::socket::shutdown_both, ignored_ec);
             socket.close(ignored_ec);
@@ -493,7 +492,6 @@ class coro_rpc_server_base {
                    << " allowed by IP whitelist";
         } catch (const std::exception& e) {
           ELOG_ERROR << "Error checking IP whitelist: " << e.what();
-          // 出错时关闭连接
           asio::error_code ignored_ec;
           socket.shutdown(asio::ip::tcp::socket::shutdown_both, ignored_ec);
           socket.close(ignored_ec);
@@ -613,7 +611,6 @@ class coro_rpc_server_base {
    std::optional<coro_io::ib_socket_t::config_t> ibv_config_;
 #endif
 
-   // IP白名单相关成员变量
    coro_io::ip_whitelist ip_whitelist_;
    bool ip_whitelist_enabled_ = false;
 };
