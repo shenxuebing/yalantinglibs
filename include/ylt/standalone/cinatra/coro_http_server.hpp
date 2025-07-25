@@ -1098,7 +1098,6 @@ class coro_http_server {
   bool read_failed_forever_ = false;
 #endif
 
-  // IP白名单相关成员
   coro_io::ip_whitelist ip_whitelist_;
   std::atomic<bool> ip_whitelist_enabled_{false};
 };
