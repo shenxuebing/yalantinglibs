@@ -28,9 +28,12 @@ else()
 endif()
 
 add_executable(coro_io_example main.cpp)
+add_executable(coro_io_example_idle_collector_shutdown_repro
+    idle_collector_shutdown_repro.cpp)
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_SYSTEM_NAME MATCHES "Windows") # mingw-w64
     target_link_libraries(coro_io_example PRIVATE ws2_32 mswsock)
+    target_link_libraries(coro_io_example_idle_collector_shutdown_repro PRIVATE ws2_32 mswsock)
 endif()
 
 if (YLT_ENABLE_CUDA)

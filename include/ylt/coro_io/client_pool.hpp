@@ -71,16 +71,22 @@ class client_pool : public std::enable_shared_from_this<
       std::weak_ptr<client_pool> self_weak,
       coro_io::detail::client_queue<std::unique_ptr<client_t>>& clients,
       std::chrono::milliseconds sleep_time, std::size_t clear_cnt) {
+    constexpr auto kSleepSlice = std::chrono::milliseconds{50};
     std::shared_ptr<client_pool> self = self_weak.lock();
     if (self == nullptr) {
       co_return;
     }
     while (true) {
       clients.reselect();
-      self = nullptr;
-      co_await coro_io::sleep_for(sleep_time);
-      if ((self = self_weak.lock()) == nullptr) {
-        break;
+      auto remaining = sleep_time;
+      while (remaining.count() > 0) {
+        const auto sleep_chunk = (std::min)(remaining, kSleepSlice);
+        self = nullptr;
+        co_await coro_io::sleep_for(sleep_chunk);
+        if ((self = self_weak.lock()) == nullptr) {
+          co_return;
+        }
+        remaining -= sleep_chunk;
       }
       while (true) {
         ELOG_TRACE << "start collect timeout client of pool{"

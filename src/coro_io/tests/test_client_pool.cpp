@@ -244,6 +244,43 @@ TEST_CASE("test collect_free_client") {
   ELOG_DEBUG << "test collect_free_client over.";
 }
 
+TEST_CASE("test client pool shutdown latency during idle collection") {
+  coro_rpc::coro_rpc_server server(1, 8801);
+  auto is_started = server.async_start();
+  REQUIRE(!is_started.hasResult());
+
+  auto io_pool = std::make_shared<coro_io::io_context_pool>(1);
+  std::thread runner([io_pool] {
+    io_pool->run();
+  });
+
+  auto pool = coro_io::client_pool<coro_rpc::coro_rpc_client>::create(
+      "127.0.0.1:8801",
+      {.max_connection = 1,
+       .idle_timeout = 3s,
+       .short_connect_idle_timeout = 3s},
+      *io_pool);
+
+  async_simple::coro::syncAwait([&]() -> async_simple::coro::Lazy<void> {
+    SpinLock lock;
+    ConditionVariable<SpinLock> cv;
+    auto res = co_await event(1, *pool, cv, lock);
+    CHECK(res);
+    CHECK(pool->free_client_count() == 1);
+    co_await coro_io::sleep_for(20ms);
+  }());
+
+  pool.reset();
+
+  auto begin = std::chrono::steady_clock::now();
+  io_pool->stop();
+  runner.join();
+  auto elapsed = std::chrono::steady_clock::now() - begin;
+
+  CHECK(elapsed < 500ms);
+  server.stop();
+}
+
 TEST_CASE("test client pools parallel r/w") {
   async_simple::coro::syncAwait([]() -> async_simple::coro::Lazy<void> {
     auto pool = coro_io::client_pools<coro_rpc::coro_rpc_client>{};
