@@ -252,6 +252,7 @@ class coro_http_server {
     }
 
     stop_timer_ = true;
+    check_timer_.cancel();
 
     close_acceptor();
 
