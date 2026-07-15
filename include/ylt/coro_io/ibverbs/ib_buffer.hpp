@@ -131,20 +131,18 @@ struct ib_buffer_t {
   static std::unique_ptr<ibv_mr, ib_deleter> regist(
       ib_device_t& dev, void* ptr, uint32_t size,
       int ib_flags = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
-                     IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_RELAXED_ORDERING);
+                     IBV_ACCESS_REMOTE_WRITE);
   static ib_buffer_t regist(ib_buffer_pool_t& pool, memory_owner_t memory,
                             std::size_t size,
                             int ib_flags = IBV_ACCESS_LOCAL_WRITE |
                                            IBV_ACCESS_REMOTE_READ |
-                                           IBV_ACCESS_REMOTE_WRITE |
-                                           IBV_ACCESS_RELAXED_ORDERING);
+                                           IBV_ACCESS_REMOTE_WRITE);
   ib_buffer_t(ib_buffer_t&&) = default;
   ib_buffer_t& operator=(ib_buffer_t&&);
   ~ib_buffer_t();
 };
 
 class ib_buffer_pool_t : public std::enable_shared_from_this<ib_buffer_pool_t> {
-public:
   struct ib_buffer_mem_control_t {
     std::atomic<std::size_t> now_usage;
     std::atomic<std::size_t> history_max_usage;

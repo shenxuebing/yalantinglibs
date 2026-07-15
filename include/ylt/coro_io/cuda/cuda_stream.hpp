@@ -32,27 +32,22 @@
 #include "ylt/easylog.hpp"
 
 namespace coro_io {
+
 class cuda_event_t {
-  struct event_deleter {
-    void operator()(CUevent* event) const {
-      cuEventDestroy(*event);
-      delete event;
-    }
-  };
-  std::unique_ptr<CUevent, event_deleter> event_;
+  std::unique_ptr<CUevent> event_;
 
  public:
   cuda_event_t(cuda_event_t&&) = default;
   cuda_event_t& operator=(cuda_event_t&&) = default;
   operator CUevent*() { return event_.get(); }
-  cuda_event_t(int flag) {
-    event_.reset(new CUevent());
+  cuda_event_t(int flag = CU_EVENT_DISABLE_TIMING) {
+    event_ = std::make_unique<CUevent>();
     cuEventCreate(event_.get(), flag);
   }
-  cuda_event_t() {}
   void record(CUstream& stream) { cuEventRecord(*event_, stream); }
   ~cuda_event_t() {
     if (event_ != nullptr) {
+      cuEventDestroy(*event_);
     }
   }
 };
@@ -126,9 +121,6 @@ class cuda_event_watcher
           sleep_interval = sleep_interval_;
           if (!trigger_event(node)) {
             events_list_.push_back(std::move(node));
-          }
-          else {
-            node = {};
           }
         }
         else {
@@ -204,7 +196,7 @@ class cuda_stream_handler_t {
   }
   async_simple::Future<CUresult> record(
       async_simple::Executor* executor = nullptr) {
-    cuda_event_t event(CU_EVENT_DISABLE_TIMING);
+    cuda_event_t event;
     event.record(stream_);
     async_simple::Promise<CUresult> p;
     auto future = p.getFuture().via(executor);
@@ -221,7 +213,7 @@ class cuda_stream_handler_t {
   cuda_device_t& get_device() { return *device_; }
 
  private:
-  CUstream stream_ = nullptr;
+  CUstream stream_;
   std::shared_ptr<cuda_device_t> device_;
 };
 }  // namespace coro_io

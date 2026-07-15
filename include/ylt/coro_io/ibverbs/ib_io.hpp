@@ -25,7 +25,6 @@
 #include <memory>
 #include <optional>
 #include <span>
-#include <stdexcept>
 #include <string_view>
 #include <system_error>
 #include <type_traits>
@@ -95,14 +94,14 @@ inline async_simple::coro::Lazy<std::error_code> async_connect(
 namespace detail {
 
 template <typename T>
-inline async_simple::coro::Lazy<std::size_t> consume_buffer(
-    coro_io::ib_socket_t& ib_socket, std::span<T>& sge_buffer) {
+inline std::size_t consume_buffer(coro_io::ib_socket_t& ib_socket,
+                                  std::span<T>& sge_buffer) {
   std::size_t transfer_total = 0;
   if (ib_socket.remain_read_buffer_size()) {
     while (sge_buffer.size()) {
-      auto length = co_await ib_socket.consume((char*)sge_buffer.front().addr,
-                                               sge_buffer.front().length,
-                                               sge_buffer.front().lkey);
+      auto length =
+          ib_socket.consume((char*)sge_buffer.front().addr,
+                            sge_buffer.front().length, sge_buffer.front().lkey);
 
       transfer_total += length;
       if (length < sge_buffer.front().length) {
@@ -116,30 +115,21 @@ inline async_simple::coro::Lazy<std::size_t> consume_buffer(
   if (transfer_total) {
     ELOG_TRACE << "has completed size:" << transfer_total;
   }
-  co_return transfer_total;
+  return transfer_total;
 }
 
 inline std::size_t copy(cuda_stream_handler_t* handler, std::span<ibv_sge> src,
                         ibv_sge dst) {
   std::size_t transfer_total = 0;
   for (auto& sge : src) {
-    if (!handler && sge.lkey == -1) {
+    if (!handler) {
       memcpy((void*)(dst.addr + transfer_total), (void*)sge.addr, sge.length);
     }
     else {
 #ifdef YLT_ENABLE_CUDA
-      if (handler) {
-        cuda_copy_async(*handler, (void*)(dst.addr + transfer_total),
-                        handler->get_device().get_gpu_id(), (void*)sge.addr,
-                        sge.lkey, sge.length);
-      }
-      else {
-        cuda_copy((void*)(dst.addr + transfer_total), -1, (void*)sge.addr,
-                  sge.lkey, sge.length);
-      }
-#else
-      ELOG_WARN << "cuda is not enabled, gpu_id = " << sge.lkey;
-      throw std::runtime_error("cuda is not enabled");
+      cuda_copy_async(*handler, (void*)(dst.addr + transfer_total),
+                      handler->get_device().get_gpu_id(), (void*)sge.addr,
+                      sge.lkey, sge.length);
 #endif
     }
     transfer_total += sge.length;
@@ -151,24 +141,14 @@ inline void copy(cuda_stream_handler_t* handler, ibv_sge src,
                  std::span<ibv_sge> dst) {
   std::size_t transfer_total = 0;
   for (auto& sge : dst) {
-    if (!handler && sge.lkey == -1) {
+    if (!handler) {
       memcpy((void*)sge.addr, (void*)(src.addr + transfer_total), sge.length);
     }
     else {
 #ifdef YLT_ENABLE_CUDA
-      if (handler) {
-        cuda_copy_async(*handler, (void*)sge.addr, sge.lkey,
-                        (void*)(src.addr + transfer_total),
-                        handler->get_device().get_gpu_id(), sge.length);
-      }
-      else {
-        cuda_copy((void*)sge.addr, sge.lkey, (void*)(src.addr + transfer_total),
-                  -1, sge.length);
-      }
-
-#else
-      ELOG_WARN << "cuda is not enabled, gpu_id = " << sge.lkey;
-      throw std::runtime_error("cuda is not enabled");
+      cuda_copy_async(*handler, (void*)sge.addr, sge.lkey,
+                      (void*)(src.addr + transfer_total),
+                      handler->get_device().get_gpu_id(), sge.length);
 #endif
     }
     transfer_total += sge.length;
@@ -280,11 +260,6 @@ async_simple::coro::
   auto len = copy(handler, sge_list, socket_buffer);
   assert(len == io_size);
   if (enable_small_message_combine) {
-#ifdef YLT_ENABLE_CUDA
-    if (handler) {
-      co_await handler->record(ib_socket.get_coro_executor());
-    }
-#endif
     ELOG_TRACE << "combine small message, now buffer size:" << now_buffer_data;
     co_return std::pair{std::error_code{}, io_size};
   }
@@ -332,7 +307,7 @@ void make_sge_impl(std::vector<ibv_sge>& sge, std::span<T> buffers) {
       continue;
     }
     int gpu_id = -1;
-    if constexpr (requires { buffer.gpu_id(); }) {
+    if constexpr (requires { buffers.gpu_id(); }) {
       gpu_id = buffer.gpu_id();
     }
     for (std::size_t i = 0; i < buffer.size(); i += UINT32_MAX) {
@@ -397,12 +372,10 @@ async_io_split_impl(coro_io::ib_socket_t& ib_socket, Buffer&& raw_buffer,
   split_sge_block.reserve(sge_span.size());
   std::size_t io_completed_size = 0;
   if constexpr (io == ib_socket_t::io_type::recv) {
-    io_completed_size = co_await consume_buffer(ib_socket, sge_span);
+    io_completed_size = consume_buffer(ib_socket, sge_span);
     if (sge_span.empty()) {
 #ifdef YLT_ENABLE_CUDA
-      // consume has already synced the stream when remain_data_ was emptied
-      if (ib_socket.remain_read_buffer_size() != 0 &&
-          ib_socket.get_cuda_stream_handler()) {
+      if (ib_socket.get_cuda_stream_handler()) {
         co_await ib_socket.get_cuda_stream_handler().record(
             ib_socket.get_coro_executor());
       }
